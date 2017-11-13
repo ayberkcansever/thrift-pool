@@ -1,5 +1,7 @@
 package com.insto.thriftpool;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.pool2.ObjectPool;
 import org.apache.thrift.TServiceClient;
 import org.slf4j.Logger;
@@ -12,15 +14,15 @@ import java.util.concurrent.TimeUnit;
 public class ThriftClient<T extends TServiceClient> implements Runnable, Closeable {
 
     private Logger logger = LoggerFactory.getLogger(getClass());
-    private final T client;
+    @Getter @Setter private final T client;
     private final ObjectPool<ThriftClient<T>> pool;
-    private final ServerInfo serviceInfo;
     private boolean finish;
-    private boolean running = true;
-    private long pingStartDelayInSec = 5;
-    private long pingIntervalInSec = 10;
-    private Class clientClass;
-    private boolean pingEnabledClient = false;
+    @Getter private final ServerInfo serviceInfo;
+    @Getter @Setter private boolean running = true;
+    @Getter @Setter private long pingStartDelayInSec = 5;
+    @Getter @Setter private long pingIntervalInSec = 10;
+    @Getter @Setter private Class clientClass;
+    @Getter @Setter private boolean pingEnabledClient = false;
 
     public ThriftClient(T client, ObjectPool<ThriftClient<T>> pool, ServerInfo serviceInfo) {
         this.client = client;
@@ -37,10 +39,6 @@ public class ThriftClient<T extends TServiceClient> implements Runnable, Closeab
             logger.info("Ping enabled thrift client created.");
             new Thread(this).start();
         }
-    }
-
-    public ServerInfo getServiceInfo() {
-        return serviceInfo;
     }
 
     public T iFace() {
@@ -74,18 +72,6 @@ public class ThriftClient<T extends TServiceClient> implements Runnable, Closeab
 
     public void finish() {
         this.finish = true;
-    }
-
-    void setFinish(boolean finish) {
-        this.finish = finish;
-    }
-
-    public void setRunning(boolean running) {
-        this.running = running;
-    }
-
-    public void setPingIntervalInSec(long pingIntervalInSec) {
-        this.pingIntervalInSec = pingIntervalInSec;
     }
 
     @Override

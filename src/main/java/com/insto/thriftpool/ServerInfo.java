@@ -1,21 +1,15 @@
 package com.insto.thriftpool;
 
+import lombok.Getter;
+
 public class ServerInfo {
 
-    private final String host;
-    private final int port;
+    @Getter private final String host;
+    @Getter private final int port;
 
     public ServerInfo(String host, int port) {
         this.host = host;
         this.port = port;
-    }
-
-    public String getHost() {
-        return host;
-    }
-
-    public int getPort() {
-        return port;
     }
 
     @Override

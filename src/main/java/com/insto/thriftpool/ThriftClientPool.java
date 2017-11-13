@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Proxy;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -24,15 +25,10 @@ import java.util.stream.Collectors;
 public class ThriftClientPool<T extends TServiceClient> {
 
     private Logger logger = LoggerFactory.getLogger(getClass());
-
     private final Function<TTransport, T> clientFactory;
-
     private final GenericObjectPool<ThriftClient<T>> pool;
-
     private List<ServerInfo> services;
-
     private boolean serviceReset = false;
-
     private final PoolConfig poolConfig;
 
     public ThriftClientPool(List<ServerInfo> services, Function<TTransport, T> factory) throws Exception {
@@ -66,39 +62,37 @@ public class ThriftClientPool<T extends TServiceClient> {
 
             @Override
             public ThriftClient<T> create() throws Exception {
-
                 // get from global list first
                 List<ServerInfo> serviceList = ThriftClientPool.this.services;
-                ServerInfo ServerInfo = getRandomService(serviceList);
-                TTransport transport = getTransport(ServerInfo);
+                ServerInfo serverInfo = getRandomService(serviceList);
+                TTransport transport = getTransport(serverInfo);
 
                 try {
                     transport.open();
                 } catch (TTransportException e) {
-                    logger.info("transport open fail service: host={}, port={}",
-                            ServerInfo.getHost(), ServerInfo.getPort());
+                    logger.info("transport open fail service: host={}, port={}", serverInfo.getHost(), serverInfo.getPort());
                     if (poolConfig.isFailover()) {
                         while (true) {
                             try {
                                 // mark current fail and try next, until none service available
-                                serviceList = removeFailService(serviceList, ServerInfo);
-                                ServerInfo = getRandomService(serviceList);
-                                transport = getTransport(ServerInfo); // while break here
-                                logger.info("failover to next service host={}, port={}",
-                                        ServerInfo.getHost(), ServerInfo.getPort());
+                                serviceList = removeFailService(serviceList, serverInfo);
+                                serverInfo = getRandomService(serviceList);
+                                transport = getTransport(serverInfo); // while break here
+                                logger.info("failover to next service host={}, port={}", serverInfo.getHost(), serverInfo.getPort());
                                 transport.open();
                                 break;
                             } catch (TTransportException e2) {
                                 logger.warn("failover fail, services left: {}", serviceList.size());
+                            } finally {
+                                TimeUnit.SECONDS.sleep(1);
                             }
                         }
                     } else {
-                        throw new ConnectionFailException("host=" + ServerInfo.getHost() + ", ip=" + ServerInfo.getPort(), e);
+                        throw new ConnectionFailException("host=" + serverInfo.getHost() + ", ip=" + serverInfo.getPort(), e);
                     }
                 }
 
-                ThriftClient<T> client = new ThriftClient<>(clientFactory.apply(transport), pool,
-                        ServerInfo);
+                ThriftClient<T> client = new ThriftClient<>(clientFactory.apply(transport), pool, serverInfo);
 
                 logger.debug("create new object for pool {}", client);
                 return client;
@@ -120,7 +114,6 @@ public class ThriftClientPool<T extends TServiceClient> {
                         return false;
                     }
                 }
-
                 return super.validateObject(p);
             }
 
@@ -146,18 +139,15 @@ public class ThriftClientPool<T extends TServiceClient> {
         serviceReset = true;
     }
 
-    private TTransport getTransport(ServerInfo ServerInfo) {
-
-        if (ServerInfo == null) {
+    private TTransport getTransport(ServerInfo serverInfo) {
+        if (serverInfo == null) {
             throw new NoBackendServiceException();
         }
-
         TTransport transport;
         if (poolConfig.getTimeout() > 0) {
-            transport = new TSocket(ServerInfo.getHost(), ServerInfo.getPort(),
-                    poolConfig.getTimeout());
+            transport = new TSocket(serverInfo.getHost(), serverInfo.getPort(), poolConfig.getTimeout());
         } else {
-            transport = new TSocket(ServerInfo.getHost(), ServerInfo.getPort());
+            transport = new TSocket(serverInfo.getHost(), serverInfo.getPort());
         }
         return transport;
     }
@@ -169,11 +159,10 @@ public class ThriftClientPool<T extends TServiceClient> {
         return serviceList.get(RandomUtils.nextInt(0, serviceList.size()));
     }
 
-    private List<ServerInfo> removeFailService(List<ServerInfo> list, ServerInfo ServerInfo) {
-        logger.info("remove service from current service list: host={}, port={}",
-                ServerInfo.getHost(), ServerInfo.getPort());
-        return list.stream() //
-                .filter(si -> !ServerInfo.equals(si)) //
+    private List<ServerInfo> removeFailService(List<ServerInfo> list, ServerInfo serverInfo) {
+        logger.info("remove service from current service list: host={}, port={}", serverInfo.getHost(), serverInfo.getPort());
+        return list.stream()
+                .filter(si -> !serverInfo.equals(si))
                 .collect(Collectors.toList());
     }
 
