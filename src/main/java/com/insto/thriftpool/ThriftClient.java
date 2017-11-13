@@ -19,23 +19,16 @@ public class ThriftClient<T extends TServiceClient> implements Runnable, Closeab
     private boolean finish;
     @Getter private final ServerInfo serviceInfo;
     @Getter @Setter private boolean running = true;
-    @Getter @Setter private long pingStartDelayInSec = 5;
-    @Getter @Setter private long pingIntervalInSec = 10;
     @Getter @Setter private Class clientClass;
-    @Getter @Setter private boolean pingEnabledClient = false;
+    private PingInfo pingInfo;
 
-    public ThriftClient(T client, ObjectPool<ThriftClient<T>> pool, ServerInfo serviceInfo) {
+    public ThriftClient(T client, ObjectPool<ThriftClient<T>> pool, ServerInfo serviceInfo, PingInfo pingInfo) {
         this.client = client;
         this.pool = pool;
         this.serviceInfo = serviceInfo;
+        this.pingInfo = pingInfo;
         clientClass = client.getClass();
-        for(Method method : clientClass.getMethods()) {
-            if(method.getName().equals("ping")) {
-                pingEnabledClient = true;
-                break;
-            }
-        }
-        if(pingEnabledClient) {
+        if(pingInfo != null) {
             logger.info("Ping enabled thrift client created.");
             new Thread(this).start();
         }
@@ -83,7 +76,7 @@ public class ThriftClient<T extends TServiceClient> implements Runnable, Closeab
     @Override
     public void run() {
         try {
-            TimeUnit.SECONDS.sleep(pingStartDelayInSec);
+            TimeUnit.SECONDS.sleep(this.pingInfo.getPingStartDelayInSec());
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -102,13 +95,16 @@ public class ThriftClient<T extends TServiceClient> implements Runnable, Closeab
                 }
             } catch (Exception ex) {
                 ex.printStackTrace();
+                this.closeClient();
+                this.close();
             } finally {
                 try {
-                    TimeUnit.SECONDS.sleep(pingIntervalInSec);
+                    TimeUnit.SECONDS.sleep(this.pingInfo.getPingIntervalInSec());
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
             }
         }
     }
+
 }

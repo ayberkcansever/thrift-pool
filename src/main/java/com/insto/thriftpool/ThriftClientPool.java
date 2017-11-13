@@ -1,8 +1,11 @@
 package com.insto.thriftpool;
 
 import com.insto.thriftpool.exception.ConnectionFailException;
+import com.insto.thriftpool.exception.InvalidPingInfoException;
 import com.insto.thriftpool.exception.NoBackendServiceException;
 import com.insto.thriftpool.exception.ThriftException;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.lang3.RandomUtils;
 import org.apache.commons.pool2.BasePooledObjectFactory;
 import org.apache.commons.pool2.PooledObject;
@@ -22,7 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-public class ThriftClientPool<T extends TServiceClient> {
+public class ThriftClientPool<T extends TServiceClient> implements Runnable {
 
     private Logger logger = LoggerFactory.getLogger(getClass());
     private final Function<TTransport, T> clientFactory;
@@ -30,31 +33,37 @@ public class ThriftClientPool<T extends TServiceClient> {
     private List<ServerInfo> services;
     private boolean serviceReset = false;
     private final PoolConfig poolConfig;
-
-    public ThriftClientPool(List<ServerInfo> services, Function<TTransport, T> factory) throws Exception {
-        this(services, factory, new PoolConfig(), null);
-    }
+    @Getter @Setter private boolean running = true;
+    @Getter @Setter private boolean logMetrics = true;
+    @Getter @Setter private PingInfo pingInfo;
 
     public ThriftClientPool(List<ServerInfo> services, Function<TTransport, T> factory,
-            PoolConfig config) throws Exception {
+                            PoolConfig config) throws Exception {
         this(services, factory, config, null);
     }
 
     public ThriftClientPool(List<ServerInfo> services, Function<TTransport, T> factory,
-            PoolConfig config, ThriftProtocolFactory pFactory) throws Exception {
+                            PoolConfig config, PingInfo pingInfo) throws Exception {
         if (services == null || services.size() == 0) {
             throw new IllegalArgumentException("services is empty!");
         }
+
         if (factory == null) {
             throw new IllegalArgumentException("factory is empty!");
         }
+
         if (config == null) {
             throw new IllegalArgumentException("config is empty!");
+        }
+
+        if(pingInfo != null && !pingInfo.isValid()) {
+            throw new InvalidPingInfoException("Ping Info is not valid");
         }
 
         this.services = services;
         this.clientFactory = factory;
         this.poolConfig = config;
+        this.pingInfo = pingInfo;
         // test if config change
         this.poolConfig.setTestOnReturn(true);
         this.poolConfig.setTestOnBorrow(true);
@@ -92,7 +101,7 @@ public class ThriftClientPool<T extends TServiceClient> {
                     }
                 }
 
-                ThriftClient<T> client = new ThriftClient<>(clientFactory.apply(transport), pool, serverInfo);
+                ThriftClient<T> client = new ThriftClient<>(clientFactory.apply(transport), pool, serverInfo, pingInfo);
 
                 logger.debug("create new object for pool {}", client);
                 return client;
@@ -219,5 +228,32 @@ public class ThriftClientPool<T extends TServiceClient> {
             pool.close();
         }
         super.finalize();
+    }
+
+    @Override
+    public void run() {
+        try {
+            TimeUnit.SECONDS.sleep(10);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        while (running) {
+            try {
+                if(logMetrics) {
+                    logger.info(
+                            "Created: " + this.pool.getCreatedCount() + "\r\n" +
+                                    "Active: " + this.pool.getNumActive() + "\r\n" +
+                                    "Idle: " + this.pool.getNumIdle());
+                }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            } finally {
+                try {
+                    TimeUnit.SECONDS.sleep(10);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
     }
 }
