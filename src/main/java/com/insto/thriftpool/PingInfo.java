@@ -9,6 +9,7 @@ public class PingInfo {
     @Getter @Setter private long pingStartDelayInSec = 10;
     @Getter @Setter private long pingIntervalInSec = 10;
     @Getter @Setter private String pingMethodName = "ping";
+    @Getter @Setter private boolean logPing = false;
 
     private PingInfo() {
 

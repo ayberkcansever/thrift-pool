@@ -86,9 +86,14 @@ public class ThriftClient<T extends TServiceClient> implements Runnable, Closeab
                     if (method.getName().equals("ping")) {
                         if(method.getReturnType() == String.class) {
                             String pong = (String) method.invoke(this.client);
-                            logger.info(pong);
+                            if(pingInfo.isLogPing()) {
+                                logger.info(pong);
+                            }
                         } else {
                             method.invoke(this.client);
+                            if(pingInfo.isLogPing()) {
+                                logger.info("Server pinged.");
+                            }
                         }
                         break;
                     }

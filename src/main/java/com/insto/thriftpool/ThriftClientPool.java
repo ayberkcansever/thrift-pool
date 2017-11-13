@@ -34,7 +34,7 @@ public class ThriftClientPool<T extends TServiceClient> implements Runnable {
     private boolean serviceReset = false;
     private final PoolConfig poolConfig;
     @Getter @Setter private boolean running = true;
-    @Getter @Setter private boolean logMetrics = true;
+    @Getter @Setter private boolean logMetrics = false;
     @Getter @Setter private PingInfo pingInfo;
 
     public ThriftClientPool(List<ServerInfo> services, Function<TTransport, T> factory,
@@ -134,6 +134,8 @@ public class ThriftClientPool<T extends TServiceClient> implements Runnable {
         }, poolConfig);
 
         pool.preparePool();
+
+        new Thread(this).start();
     }
 
     public List<ServerInfo> getServices() {
